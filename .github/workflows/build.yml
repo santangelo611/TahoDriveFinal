@@ -18,11 +18,12 @@ jobs:
         
     - name: Install dependencies
       run: npm install
-          - name: Install dependencies
-      run: npm install
-    - run: npx cap add android
-    - run: cp index.html www/
-    - run: npx cap sync android
+      
+    - name: Add Android platform
+      run: npx cap add android
+      
+    - name: Copy web assets
+      run: cp index.html www/
       
     - name: Capacitor Sync
       run: npx cap sync android
