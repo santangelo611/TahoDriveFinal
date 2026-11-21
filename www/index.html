@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TahoDrive — Jurnal Șofer</title>
+<meta name="theme-color" content="#f0a500" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--card-2:#1f2630;--border:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#f0a500;--ok:#2ea043;--warn:#d29922;--danger:#f85149;--info:#58a6ff}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text);padding-bottom:48px}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:14px 16px;position:sticky;top:0;z-index:20}
+.hdr-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.brand{font-weight:800;font-size:1.15rem;color:var(--accent)}
+.meta{font-size:.85rem;color:var(--muted)}
+nav{display:flex;gap:8px;overflow-x:auto;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--border)}
+nav button{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;white-space:nowrap;font-weight:600;font-size:.9rem}
+nav button.active{background:var(--accent);color:#0d1117;border-color:var(--accent)}
+main{max-width:1050px;margin:16px auto;padding:0 16px}
+.page{display:none}.page.active{display:block}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px}
+.grid-2{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.grid-4{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat-box{background:var(--card-2);border:1px solid var(--border);border-radius:10px;padding:12px}
+.stat-label{font-size:.8rem;color:var(--muted)}
+.stat-val{font-size:1.25rem;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.timer-display{text-align:center;padding:16px;background:var(--card-2);border-radius:12px;border:1px solid var(--border);margin-bottom:14px}
+.timer-digits{font-size:2.5rem;font-weight:800;font-variant-numeric:tabular-nums}
+.actions-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:10px}
+button.btn{border:1px solid var(--border);background:var(--card-2);color:var(--text);padding:10px 14px;border-radius:8px;cursor:pointer;font-weight:600;font-size:.92rem}
+button.btn:hover{filter:brightness(1.08)}
+button.btn-primary{background:var(--accent);color:#0d1117;border-color:var(--accent)}
+button.btn-danger{background:rgba(248,81,73,.16);color:#ff7b72;border-color:var(--danger)}
+button.btn-ok{background:rgba(46,160,67,.18);color:#7ee787;border-color:var(--ok)}
+input,select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:9px 10px;font-size:.92rem}
+label{display:block;font-size:.82rem;color:var(--muted);margin-bottom:5px}
+.field{margin-bottom:12px}
+.banner{padding:11px 14px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border);background:var(--card-2);font-size:.9rem}
+.banner.warn{border-color:var(--warn);color:#f2cc60}
+.banner.info{border-color:var(--info);color:#79c0ff}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{border-bottom:1px solid var(--border);padding:8px;text-align:left}
+th{color:var(--muted);font-weight:600}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.78rem;font-weight:700;background:var(--card-2);border:1px solid var(--border)}
+.row-flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#map{height:300px;border-radius:10px;border:1px solid var(--border);margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+<div class="hdr-top">
+<div class="brand">🚛 TahoDrive</div>
+<div class="meta" id="hdr-info">Se încarcă...</div>
+</div>
+</header>
+
+<nav id="main-nav">
+<button class="active" data-page="dashboard" onclick="showPage('dashboard')">📊 Dashboard</button>
+<button data-page="activitati" onclick="showPage('activitati')">✏️ Activități & Zile</button>
+<button data-page="rapoarte" onclick="showPage('rapoarte')">📅 Rapoarte</button>
+<button data-page="harta" onclick="showPage('harta')">🗺️ Hartă</button>
+<button data-page="backup" onclick="showPage('backup')">💾 Backup JSON</button>
+<button data-page="setari" onclick="showPage('setari')">⚙️ Setări</button>
+</nav>
+
+<main>
+<section id="page-dashboard" class="page active">
+<div id="missing-days-banner" class="banner warn" style="display:none;"></div>
+<div id="rest-day-banner" class="banner info" style="display:none;"></div>
+<div class="card">
+<div class="timer-display">
+<div class="meta" id="active-activity-label">Stare curentă: Inactiv</div>
+<div class="timer-digits" id="live-timer">00:00:00</div>
+<div class="meta" id="day-summary-sub">Data: -</div>
+</div>
+<div class="actions-grid" style="margin-bottom:12px;">
+<button class="btn btn-ok" onclick="startActivity('condus')">🚗 Condus</button>
+<button class="btn" onclick="startActivity('lucru')">🛠️ Alte lucrări</button>
+<button class="btn" onclick="startActivity('disponibilitate')">⏳ Disponibilitate</button>
+<button class="btn" onclick="startActivity('pauza')">☕ Pauză / Odihnă</button>
+<button class="btn btn-danger" onclick="stopActivity()">⏹️ Oprește</button>
+</div>
+<div class="row-flex">
+<button class="btn btn-primary" onclick="markRestDay(todayKey())">🛌 Zi liberă / Odihnă (azi)</button>
+<button class="btn" onclick="openEditForDate(todayKey())">✏️ Editează activități (azi)</button>
+<button class="btn" onclick="scanMissingDays()">🗓️ Verifică zile fără activitate</button>
+</div>
+</div>
+<div class="card">
+<h3 style="margin-top:0;">Totaluri ziua curentă</h3>
+<div class="grid-4" id="today-totals"></div>
+</div>
+</section>
+
+<section id="page-activitati" class="page">
+<div class="card">
+<h3 style="margin-top:0;">✏️ Adaugă sau editează activitate / zi liberă</h3>
+<div class="grid-2">
+<div class="field">
+<label for="edit-date">Data (YYYY-MM-DD)</label>
+<input type="date" id="edit-date" onchange="renderDayEditor()" />
+</div>
+<div class="field">
+<label for="edit-day-status">Status zi</label>
+<select id="edit-day-status" onchange="setDayStatus(document.getElementById('edit-date').value, this.value)">
+<option value="normal">Activitate normală</option>
+<option value="odihna">🛌 Zi liberă / Odihnă</option>
+</select>
+</div>
+</div>
+<div class="grid-4">
+<div class="field">
+<label for="seg-type">Tip activitate</label>
+<select id="seg-type">
+<option value="condus">Condus</option>
+<option value="lucru">Alte lucrări</option>
+<option value="disponibilitate">Disponibilitate</option>
+<option value="pauza">Pauză / Odihnă</option>
+</select>
+</div>
+<div class="field"><label for="seg-start">Ora început</label><input type="time" id="seg-start" value="08:00" /></div>
+<div class="field"><label for="seg-end">Ora sfârșit</label><input type="time" id="seg-end" value="12:00" /></div>
+<div class="field"><label for="seg-km">KM parcurși</label><input type="number" id="seg-km" step="0.1" min="0" value="0" /></div>
+<div class="field"><label for="seg-litri">Litri consumați</label><input type="number" id="seg-litri" step="0.1" min="0" value="0" /></div>
+<div class="field"><label for="seg-note">Notă (opțional)</label><input type="text" id="seg-note" placeholder="Ex: Cursă / încărcare" /></div>
+</div>
+<button class="btn btn-primary" onclick="addManualSegment()">➕ Salvează segmentul</button>
+</div>
+<div class="card">
+<h3 style="margin-top:0;">Segmente în ziua selectată</h3>
+<div id="segments-list"></div>
+</div>
+<div class="card">
+<h3 style="margin-top:0;">🗓️ Detecție automată zile fără activitate</h3>
+<div id="missing-days-list"></div>
+</div>
+</section>
+
+<section id="page-rapoarte" class="page">
+<div class="card">
+<h3 style="margin-top:0;">📅 Rapoarte cu totalizare</h3>
+<div class="grid-2">
+<div class="field">
+<label for="report-period">Perioadă</label>
+<select id="report-period" onchange="renderReports()">
+<option value="week">Săptămânal (7 zile)</option>
+<option value="month">Lunar</option>
+<option value="year">Anual</option>
+</select>
+</div>
+<div class="field"><label for="report-ref-date">Data de referință</label><input type="date" id="report-ref-date" onchange="renderReports()" /></div>
+</div>
+<div id="report-totals" class="grid-4"></div>
+<div class="row-flex" style="margin-top:12px;">
+<button class="btn btn-primary" onclick="exportReportHTML(true)">📄 Exportă raport DETALIAT (HTML)</button>
+<button class="btn btn-ok" onclick="exportReportHTML(true, 'en')">🇬🇧 Export detailed report (EN)</button>
+<button class="btn" onclick="exportReportHTML(false)">📋 Exportă raport SUMAR (HTML)</button>
+</div>
+</div>
+<div class="card">
+<h3 style="margin-top:0;">Detaliu pe zile</h3>
+<div id="report-table-wrap"></div>
+</div>
+</section>
+
+<section id="page-harta" class="page">
+<div class="card">
+<h3 style="margin-top:0;">🗺️ Poziția curentă</h3>
+<p class="meta">Harta folosește OpenStreetMap. Poziționarea cere permisiune și HTTPS sau localhost.</p>
+<button class="btn btn-primary" onclick="initMap()">📍 Afișează poziția</button>
+<div id="map"></div>
+<p class="meta" id="geo-status" style="margin-top:8px;"></p>
+</div>
+</section>
+
+<section id="page-backup" class="page">
+<div class="card">
+<h3 style="margin-top:0;">💾 Export / Import JSON</h3>
+<div class="row-flex" style="margin-bottom:14px;">
+<button class="btn btn-primary" onclick="exportJSON()">⬇️ Exportă Backup JSON</button>
+<label class="btn" style="margin:0;">⬆️ Importă Backup JSON
+<input type="file" accept=".json,application/json" style="display:none;" onchange="importJSON(event)" />
+</label>
+</div>
+<div class="field">
+<label for="json-raw">Conținut JSON</label>
+<textarea id="json-raw" rows="10"></textarea>
+</div>
+<div class="row-flex">
+<button class="btn btn-ok" onclick="importFromTextarea()">✅ Aplică JSON</button>
+<button class="btn btn-danger" onclick="resetAllData()">🗑️ Șterge toate datele</button>
+</div>
+</div>
+</section>
+
+<section id="page-setari" class="page">
+<div class="card">
+<h3 style="margin-top:0;">⚙️ Setări șofer, firmă & vehicul</h3>
+<div class="grid-2">
+<div class="field"><label for="set-driver">Nume șofer</label><input type="text" id="set-driver" placeholder="Ex: Ion Popescu" /></div>
+<div class="field"><label for="set-company">Firmă</label><input type="text" id="set-company" placeholder="Ex: Transport SRL" /></div>
+<div class="field"><label for="set-truck">Număr camion</label><input type="text" id="set-truck" placeholder="Ex: B-123-ABC" /></div>
+<div class="field"><label for="set-rate">Tarif €/oră</label><input type="number" id="set-rate" step="0.01" min="0" value="0" /></div>
+<div class="field"><label for="set-price">Preț €/litru</label><input type="number" id="set-price" step="0.01" min="0" value="0" /></div>
+</div>
+<button class="btn btn-primary" onclick="saveSettings()">💾 Salvează setările</button>
+</div>
+</section>
+</main>
+
+<script>
+const STORAGE_KEY = 'tahodrive_clean_v1';
+const ACTIVITY_LABELS = { condus:'🚗 Condus', lucru:'🛠️ Alte lucrări', disponibilitate:'⏳ Disponibilitate', pauza:'☕ Pauză / Odihnă' };
+let state = loadState();
+let tickInterval = null;
+let map = null, marker = null;
+
+function defaultState() {
+  return { version:1, settings:{ driver:'', company:'', truck:'', rate:0, price:0 }, active:null, days:{} };
+}
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultState();
+    const p = JSON.parse(raw);
+    return { version:1, settings:Object.assign(defaultState().settings, p.settings||{}), active:p.active||null, days:(p.days&&typeof p.days==='object')?p.days:{} };
+  } catch { return defaultState(); }
+}
+function saveState(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); renderAll(); }
+function todayKey(){ return formatDateKey(new Date()); }
+function formatDateKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function parseDateKey(k){ const a=k.split('-').map(Number); return new Date(a[0],(a[1]||1)-1,a[2]||1); }
+function ensureDay(k){ if(!state.days[k]) state.days[k]={status:'normal',segments:[]}; if(!Array.isArray(state.days[k].segments)) state.days[k].segments=[]; return state.days[k]; }
+function formatHMS(s){ s=Math.max(0,Math.floor(s)); return String(Math.floor(s/3600)).padStart(2,'0')+':'+String(Math.floor((s%3600)/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0'); }
+function formatHM(s){ s=Math.max(0,Math.floor(s)); return Math.floor(s/3600)+'h '+String(Math.floor((s%3600)/60)).padStart(2,'0')+'m'; }
+function formatTimeHM(ts){ const d=new Date(ts); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function showPage(name){
+  document.querySelectorAll('.page').forEach(function(el){ el.classList.remove('active'); });
+  const t=document.getElementById('page-'+name); if(t) t.classList.add('active');
+  document.querySelectorAll('nav button').forEach(function(b){ b.classList.toggle('active', b.dataset.page===name); });
+  if(name==='activitati') renderDayEditor();
+  if(name==='rapoarte') renderReports();
+  if(name==='backup') document.getElementById('json-raw').value=JSON.stringify(state,null,2);
+  if(name==='setari'){
+    document.getElementById('set-driver').value=state.settings.driver||'';
+    document.getElementById('set-company').value=state.settings.company||'';
+    document.getElementById('set-truck').value=state.settings.truck||'';
+    document.getElementById('set-rate').value=state.settings.rate||0;
+    document.getElementById('set-price').value=state.settings.price||0;
+  }
+  if(name==='harta') setTimeout(initMap,150);
+}
+
+function startActivity(type){
+  if(state.active) stopActivity();
+  const key=todayKey(); const day=ensureDay(key); day.status='normal';
+  state.active={type:type,startTs:Date.now(),dateKey:key}; saveState(); startTick();
+}
+function stopActivity(){
+  if(!state.active) return;
+  const now=Date.now(); const a=state.active;
+  const day=ensureDay(a.dateKey||todayKey());
+  if(now>a.startTs) day.segments.push({ id:'seg_'+now+'_'+Math.random().toString(36).slice(2,6), type:a.type, startTs:a.startTs, endTs:now, note:'', km:0, litri:0 });
+  state.active=null; saveState();
+}
+function startTick(){
+  if(tickInterval) clearInterval(tickInterval);
+  tickInterval=setInterval(function(){ updateLiveTimer(); renderTodayTotals(); },1000);
+}
+function updateLiveTimer(){
+  const t=document.getElementById('live-timer'), l=document.getElementById('active-activity-label');
+  if(!state.active){ t.textContent='00:00:00'; l.textContent='Stare curentă: Inactiv'; return; }
+  t.textContent=formatHMS((Date.now()-state.active.startTs)/1000);
+  l.textContent='Activ acum: '+(ACTIVITY_LABELS[state.active.type]||state.active.type);
+}
+function getDayTotals(key, includeActiveNow){
+  const tot={condus:0,lucru:0,disponibilitate:0,pauza:0,km:0,litri:0};
+  const day=state.days[key];
+  if(day&&Array.isArray(day.segments)) for(let i=0;i<day.segments.length;i++){
+    const s=day.segments[i];
+    const sec=Math.max(0,Math.floor((s.endTs-s.startTs)/1000));
+    if(tot[s.type]!==undefined) tot[s.type]+=sec;
+    tot.km += Number(s.km)||0;
+    tot.litri += Number(s.litri)||0;
+  }
+  if(includeActiveNow&&state.active&&(state.active.dateKey||todayKey())===key){
+    const sec=Math.max(0,Math.floor((Date.now()-state.active.startTs)/1000));
+    if(tot[state.active.type]!==undefined) tot[state.active.type]+=sec;
+  }
+  return tot;
+}
+function renderTodayTotals(){
+  const t=getDayTotals(todayKey(),true);
+  document.getElementById('today-totals').innerHTML=
+    '<div class="stat-box"><div class="stat-label">🚗 Condus</div><div class="stat-val">'+formatHM(t.condus)+'</div></div>'+
+    '<div class="stat-box"><div class="stat-label">🛠️ Alte lucrări</div><div class="stat-val">'+formatHM(t.lucru)+'</div></div>'+
+    '<div class="stat-box"><div class="stat-label">⏳ Disponibilitate</div><div class="stat-val">'+formatHM(t.disponibilitate)+'</div></div>'+
+    '<div class="stat-box"><div class="stat-label">☕ Pauză</div><div class="stat-val">'+formatHM(t.pauza)+'</div></div>';
+}
+function markRestDay(key){
+  if(!key) return;
+  if(state.active&&(state.active.dateKey||todayKey())===key) state.active=null;
+  ensureDay(key).status='odihna'; saveState();
+}
+function setDayStatus(key,status){ if(!key) return; ensureDay(key).status = status==='odihna'?'odihna':'normal'; saveState(); }
+function openEditForDate(key){ showPage('activitati'); document.getElementById('edit-date').value=key; renderDayEditor(); }
+
+function renderDayEditor(){
+  const inp=document.getElementById('edit-date'); if(!inp.value) inp.value=todayKey();
+  const key=inp.value; const day=ensureDay(key);
+  document.getElementById('edit-day-status').value=day.status||'normal';
+  const list=document.getElementById('segments-list');
+  if(!day.segments.length){
+    list.innerHTML = day.status==='odihna' ? '<p class="meta">Zi marcată ca 🛌 Zi liberă.</p>' : '<p class="meta">Nu există segmente.</p>';
+    return;
+  }
+  const sorted=day.segments.slice().sort(function(a,b){return a.startTs-b.startTs;});
+  let html='<table><thead><tr><th>Activitate</th><th>Interval</th><th>Durată</th><th>KM</th><th>Litri</th><th>Notă</th><th>Acțiune</th></tr></thead><tbody>';
+  for(let i=0;i<sorted.length;i++){
+    const s=sorted[i];
+    html+='<tr>'+
+      '<td>'+(ACTIVITY_LABELS[s.type]||s.type)+'</td>'+
+      '<td>'+formatTimeHM(s.startTs)+' - '+formatTimeHM(s.endTs)+'</td>'+
+      '<td>'+formatHM((s.endTs-s.startTs)/1000)+'</td>'+
+      '<td>'+(Number(s.km)||0)+'</td>'+
+      '<td>'+(Number(s.litri)||0)+'</td>'+
+      '<td>'+escapeHtml(s.note||'')+'</td>'+
+      '<td><button class="btn btn-danger" onclick="deleteSegment(\''+key+'\',\''+s.id+'\')">Șterge</button></td>'+
+    '</tr>';
+  }
+  html+='</tbody></table>';
+  list.innerHTML=html;
+}
+function addManualSegment(){
+  const key=document.getElementById('edit-date').value||todayKey();
+  const type=document.getElementById('seg-type').value;
+  const startStr=document.getElementById('seg-start').value;
+  const endStr=document.getElementById('seg-end').value;
+  const km=Number(document.getElementById('seg-km').value)||0;
+  const litri=Number(document.getElementById('seg-litri').value)||0;
+  const note=document.getElementById('seg-note').value.trim();
+  if(!startStr||!endStr){ alert('Completează orele.'); return; }
+  const sp=startStr.split(':').map(Number), ep=endStr.split(':').map(Number);
+  const b=parseDateKey(key);
+  const startTs=new Date(b.getFullYear(),b.getMonth(),b.getDate(),sp[0],sp[1],0).getTime();
+  let endTs=new Date(b.getFullYear(),b.getMonth(),b.getDate(),ep[0],ep[1],0).getTime();
+  if(endTs<=startTs) endTs+=86400000;
+  const day=ensureDay(key); day.status='normal';
+  day.segments.push({ id:'man_'+Date.now()+'_'+Math.random().toString(36).slice(2,6), type:type, startTs:startTs, endTs:endTs, note:note, km:km, litri:litri });
+  document.getElementById('seg-note').value=''; saveState(); renderDayEditor();
+}
+function deleteSegment(key,segId){ const d=ensureDay(key); d.segments=d.segments.filter(function(s){return s.id!==segId;}); saveState(); renderDayEditor(); }
+
+function getMissingDays(){
+  const keys=Object.keys(state.days).filter(function(k){ const d=state.days[k]; return d&&(d.status==='odihna'||(Array.isArray(d.segments)&&d.segments.length>0)); }).sort();
+  if(!keys.length) return [];
+  const start=parseDateKey(keys[0]), today=parseDateKey(todayKey()), missing=[];
+  const c=new Date(start.getFullYear(),start.getMonth(),start.getDate());
+  while(c<today){
+    const k=formatDateKey(c); const e=state.days[k];
+    if(!e||(e.status!=='odihna'&&(!Array.isArray(e.segments)||!e.segments.length))) missing.push(k);
+    c.setDate(c.getDate()+1);
+  }
+  return missing;
+}
+function scanMissingDays(){
+  const missing=getMissingDays();
+  const b=document.getElementById('missing-days-banner');
+  if(missing.length>0){ b.style.display='block'; b.innerHTML='🗓️ '+missing.length+' zile fără activitate: '+missing.slice(-5).join(', ')+'. <button class="btn" onclick="showPage(\'activitati\')">Vezi</button>'; }
+  else b.style.display='none';
+  const list=document.getElementById('missing-days-list'); if(!list) return;
+  if(!missing.length){ list.innerHTML='<p class="meta">Nu există zile lipsă.</p>'; return; }
+  let html='<table><thead><tr><th>Data</th><th>Acțiuni</th></tr></thead><tbody>';
+  for(let i=0;i<missing.length;i++){
+    const k=missing[i];
+    html+='<tr><td><strong>'+k+'</strong></td><td class="row-flex">'+
+      '<button class="btn btn-primary" onclick="markRestDay(\''+k+'\');scanMissingDays();">🛌 Zi liberă</button>'+
+      '<button class="btn" onclick="openEditForDate(\''+k+'\')">✏️ Adaugă</button>'+
+    '</td></tr>';
+  }
+  html+='</tbody></table>'; list.innerHTML=html;
+}
+
+function collectReportKeys(){
+  const refInput=document.getElementById('report-ref-date'); if(!refInput.value) refInput.value=todayKey();
+  const period=document.getElementById('report-period').value;
+  const ref=parseDateKey(refInput.value); const keys=[];
+  if(period==='week'){ for(let i=6;i>=0;i--){ const d=new Date(ref.getFullYear(),ref.getMonth(),ref.getDate()-i); keys.push(formatDateKey(d)); } }
+  else if(period==='month'){ const y=ref.getFullYear(),m=ref.getMonth(),dim=new Date(y,m+1,0).getDate(); for(let d=1;d<=dim;d++) keys.push(formatDateKey(new Date(y,m,d))); }
+  else { const y=ref.getFullYear(); const c=new Date(y,0,1); while(c.getFullYear()===y){ keys.push(formatDateKey(c)); c.setDate(c.getDate()+1); } }
+  return keys;
+}
+function renderReports(){
+  const keys=collectReportKeys();
+  const sum={condus:0,lucru:0,disponibilitate:0,pauza:0,km:0,litri:0,restDays:0};
+  const rows=[];
+  for(let i=0;i<keys.length;i++){
+    const k=keys[i]; const e=state.days[k]; const t=getDayTotals(k,true);
+    sum.condus+=t.condus; sum.lucru+=t.lucru; sum.disponibilitate+=t.disponibilitate; sum.pauza+=t.pauza;
+    sum.km+=t.km; sum.litri+=t.litri;
+    if(e&&e.status==='odihna') sum.restDays++;
+    const has=(e&&e.status==='odihna')||(t.condus+t.lucru+t.disponibilitate+t.pauza>0);
+    if(has) rows.push({key:k,status:e?e.status:'normal',t:t});
+  }
+  document.getElementById('report-totals').innerHTML=
+    '<div class="stat-box"><div class="stat-label">🚗 Condus</div><div class="stat-val">'+formatHM(sum.condus)+'</div></div>'+
+    '<div class="stat-box"><div class="stat-label">🛠️ Alte lucrări</div><div class="stat-val">'+formatHM(sum.lucru)+'</div></div>'+
+    '<div class="stat-box"><div class="stat-label">🛣️ KM</div><div class="stat-val">'+sum.km.toFixed(1)+'</div></div>'+
+    '<div class="stat-box"><div class="stat-label">⛽ Litri</div><div class="stat-val">'+sum.litri.toFixed(1)+'</div></div>';
+  const wrap=document.getElementById('report-table-wrap');
+  if(!rows.length){ wrap.innerHTML='<p class="meta">Nu există înregistrări.</p>'; return; }
+  let html='<table><thead><tr><th>Data</th><th>Status</th><th>Condus</th><th>Alte lucrări</th><th>Disponibilitate</th><th>Pauză</th><th>KM</th><th>Litri</th></tr></thead><tbody>';
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i];
+    html+='<tr><td>'+r.key+'</td>'+
+      '<td>'+(r.status==='odihna'?'<span class="badge">🛌 Zi liberă</span>':'Activ')+'</td>'+
+      '<td>'+formatHM(r.t.condus)+'</td>'+
+      '<td>'+formatHM(r.t.lucru)+'</td>'+
+      '<td>'+formatHM(r.t.disponibilitate)+'</td>'+
+      '<td>'+formatHM(r.t.pauza)+'</td>'+
+      '<td>'+r.t.km.toFixed(1)+'</td>'+
+      '<td>'+r.t.litri.toFixed(1)+'</td></tr>';
+  }
+  html+='</tbody></table>'; wrap.innerHTML=html;
+}
+
+function saveFile(name, content, mime){
+  const blob=new Blob([content],{type:mime});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=name; a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); },1000);
+}
+
+function exportReportHTML(detailed, lang){
+  lang = (lang === 'en') ? 'en' : 'ro';
+  const keys=collectReportKeys();
+  const s=state.settings;
+  const driver=s.driver||'—', company=s.company||'—', truck=s.truck||'—';
+  const rate=Number(s.rate)||0, price=Number(s.price)||0;
+
+  const T = (lang === 'en') ? {
+    title: 'Detailed journal', summary: 'Summary report',
+    driver: 'Driver', company: 'Company', truck: 'Truck', generated: 'Generated',
+    totalCondus: 'Total driving', totalLucru: 'Other work', totalDisp: 'Availability',
+    totalPauza: 'Break', km: 'KM', litri: 'Liters', estimated: 'Estimated', restDays: 'Rest days',
+    activitate: 'Activity', pornit: 'Start', oprit: 'End', durata: 'Duration',
+    orePlatite: 'Paid hours', salariu: 'Salary', ziLibera: 'Rest day', activ: 'Active',
+    condus: 'Driving', alteLucrari: 'Other work', pauza: 'Break', disponibilitate: 'Availability'
+  } : {
+    title: 'Jurnal detaliat', summary: 'Raport sumar',
+    driver: 'Șofer', company: 'Firmă', truck: 'Camion', generated: 'Generat',
+    totalCondus: 'Total Condus', totalLucru: 'Alte lucrări', totalDisp: 'Disponibilitate',
+    totalPauza: 'Pauză', km: 'KM', litri: 'Litri', estimated: 'Estimat', restDays: 'Zile libere',
+    activitate: 'Activitate', pornit: 'Pornit', oprit: 'Oprit', durata: 'Durată',
+    orePlatite: 'Ore plătite', salariu: 'Salariu', ziLibera: 'Zi liberă', activ: 'Activ',
+    condus: 'Condus', alteLucrari: 'Alte lucrări', pauza: 'Pauză', disponibilitate: 'Disponibilitate'
+  };
+  const L = {
+    condus: T.condus, lucru: T.alteLucrari, disponibilitate: T.disponibilitate, pauza: T.pauza
+  };
+  const fmt = function(sec){ return formatHM(sec); };
+
+  let totalCondus=0, totalLucru=0, totalDisp=0, totalPauza=0, totalKm=0, totalLitri=0, restDays=0;
+  let body='';
+
+  if(detailed){
+    for(let i=keys.length-1;i>=0;i--){
+      const k=keys[i]; const e=state.days[k]; const t=getDayTotals(k,true);
+      if(!e && t.condus+t.lucru+t.disponibilitate+t.pauza===0) continue;
+      totalCondus+=t.condus; totalLucru+=t.lucru; totalDisp+=t.disponibilitate; totalPauza+=t.pauza;
+      totalKm+=t.km; totalLitri+=t.litri;
+      if(e&&e.status==='odihna'){ restDays++; continue; }
+      const paid=t.condus+t.lucru+t.disponibilitate;
+      const salary=(paid/3600)*rate;
+      let segRows='';
+      if(e&&Array.isArray(e.segments)&&e.segments.length){
+        const sorted=e.segments.slice().sort(function(a,b){return a.startTs-b.startTs;});
+        for(let j=0;j<sorted.length;j++){
+          const sg=sorted[j];
+          segRows+='<tr>'+
+            '<td style="padding:3px 7px;">'+(L[sg.type]||sg.type)+'</td>'+
+            '<td style="text-align:center;padding:3px 7px;">'+formatTimeHM(sg.startTs)+'</td>'+
+            '<td style="text-align:center;padding:3px 7px;">'+formatTimeHM(sg.endTs)+'</td>'+
+            '<td style="text-align:center;padding:3px 7px;">'+fmt((sg.endTs-sg.startTs)/1000)+'</td>'+
+          '</tr>';
+        }
+      } else {
+        segRows='<tr><td colspan="4" style="color:#999;padding:5px 7px;">—</td></tr>';
+      }
+      body+='<div style="page-break-inside:avoid;margin-bottom:20px;border:1px solid #ccc;border-radius:8px;overflow:hidden;">'+
+        '<div style="background:#0d1117;color:#f0a500;padding:9px 14px;font-weight:700;font-size:13px;">📅 '+k+' <span style="color:#8b949e;font-size:11px;font-weight:400;"> | '+driver+' | '+truck+'</span></div>'+
+        '<div style="padding:11px 14px;font-size:12px;">'+
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">'+
+            '<span>🚛 '+fmt(t.condus)+'</span><span>☕ '+fmt(t.pauza)+'</span><span>🛌 '+fmt(t.disponibilitate)+'</span><span>🏗️ '+fmt(t.lucru)+'</span>'+
+          '</div>'+
+          '<div style="background:#f0fff4;border:1px solid #d4edda;border-radius:5px;padding:6px 10px;margin-bottom:8px;display:flex;gap:12px;flex-wrap:wrap;">'+
+            '<span>✅ '+T.orePlatite+': <b style="color:#155724;">'+fmt(paid)+'</b></span>'+
+            '<span>💶 '+T.salariu+': <b style="color:#155724;">'+salary.toFixed(2)+' €</b></span>'+
+            '<span>🛣️ '+t.km.toFixed(1)+' km</span>'+
+            '<span>⛽ '+t.litri.toFixed(1)+' L ('+(t.litri*price).toFixed(2)+' €)</span>'+
+          '</div>'+
+          '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:6px;">'+
+            '<thead><tr style="background:#f5f5f5;">'+
+              '<th style="text-align:left;padding:3px 7px;">'+T.activitate+'</th>'+
+              '<th style="text-align:center;padding:3px 7px;">'+T.pornit+'</th>'+
+              '<th style="text-align:center;padding:3px 7px;">'+T.oprit+'</th>'+
+              '<th style="text-align:center;padding:3px 7px;">'+T.durata+'</th>'+
+            '</tr></thead>'+
+            '<tbody>'+segRows+'</tbody></table>'+
+        '</div></div>';
+    }
+  } else {
+    let rows='';
+    for(let i=0;i<keys.length;i++){
+      const k=keys[i]; const e=state.days[k]; const t=getDayTotals(k,true);
+      const has=(e&&e.status==='odihna')||(t.condus+t.lucru+t.disponibilitate+t.pauza>0);
+      if(!has) continue;
+      totalCondus+=t.condus; totalLucru+=t.lucru; totalDisp+=t.disponibilitate; totalPauza+=t.pauza;
+      totalKm+=t.km; totalLitri+=t.litri;
+      if(e&&e.status==='odihna') restDays++;
+      rows+='<tr>'+
+        '<td style="padding:3px 7px;">'+k+'</td>'+
+        '<td style="text-align:center;padding:3px 7px;">'+(e&&e.status==='odihna'?T.ziLibera:T.activ)+'</td>'+
+        '<td style="text-align:center;padding:3px 7px;">'+fmt(t.condus)+'</td>'+
+        '<td style="text-align:center;padding:3px 7px;">'+fmt(t.lucru)+'</td>'+
+        '<td style="text-align:center;padding:3px 7px;">'+fmt(t.pauza)+'</td>'+
+        '<td style="text-align:center;padding:3px 7px;">'+t.km.toFixed(1)+'</td>'+
+        '<td style="text-align:center;padding:3px 7px;">'+t.litri.toFixed(1)+'</td>'+
+      '</tr>';
+    }
+    body='<table style="width:100%;border-collapse:collapse;font-size:12px;">'+
+      '<thead><tr style="background:#f5f5f5;">'+
+        '<th style="text-align:left;padding:3px 7px;">Data</th>'+
+        '<th style="text-align:center;padding:3px 7px;">Status</th>'+
+        '<th style="text-align:center;padding:3px 7px;">'+T.condus+'</th>'+
+        '<th style="text-align:center;padding:3px 7px;">'+T.alteLucrari+'</th>'+
+        '<th style="text-align:center;padding:3px 7px;">'+T.pauza+'</th>'+
+        '<th style="text-align:center;padding:3px 7px;">'+T.km+'</th>'+
+        '<th style="text-align:center;padding:3px 7px;">'+T.litri+'</th>'+
+      '</tr></thead><tbody>'+rows+'</tbody></table>';
+  }
+
+  const estimated=(totalCondus+totalLucru+totalDisp)/3600*rate + totalLitri*price;
+  const html='<!DOCTYPE html><html lang="'+(lang==='en'?'en':'ro')+'"><head><meta charset="UTF-8"><title>TahoDrive Report</title>'+
+    '<style>body{font-family:Arial,sans-serif;padding:20px;color:#1f2328;}h1{font-size:18px;margin-bottom:3px;}.sub{color:#666;font-size:11px;margin-bottom:20px;}</style></head><body>'+
+    '<h1>🚛 TahoDrive — '+(detailed?T.title:T.summary)+'</h1>'+
+    '<div class="sub">'+T.driver+': '+driver+' | '+T.company+': '+company+' | '+T.truck+': '+truck+' | '+T.generated+': '+new Date().toLocaleString(lang==='en'?'en-GB':'ro-RO')+'</div>'+
+    '<p><strong>'+T.totalCondus+':</strong> '+formatHM(totalCondus)+' | <strong>'+T.totalLucru+':</strong> '+formatHM(totalLucru)+' | <strong>'+T.totalDisp+':</strong> '+formatHM(totalDisp)+' | <strong>'+T.totalPauza+':</strong> '+formatHM(totalPauza)+' | <strong>'+T.km+':</strong> '+totalKm.toFixed(1)+' | <strong>'+T.litri+':</strong> '+totalLitri.toFixed(1)+' | <strong>'+T.estimated+':</strong> €'+estimated.toFixed(2)+' | <strong>'+T.restDays+':</strong> '+restDays+'</p>'+
+    body+'</body></html>';
+
+  saveFile('report-'+(detailed?'detailed':'summary')+'-'+(lang==='en'?'en':'ro')+'-'+todayKey()+'.html', html, 'text/html;charset=utf-8');
+}
+
+function exportJSON(){
+  const dataStr=JSON.stringify(state,null,2);
+  document.getElementById('json-raw').value=dataStr;
+  saveFile('tahodrive-backup-'+todayKey()+'.json', dataStr, 'application/json');
+}
+function importJSON(event){
+  const file=event.target.files&&event.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(e){ applyImportedJSON(String(e.target.result||'')); };
+  reader.readAsText(file); event.target.value='';
+}
+function importFromTextarea(){ applyImportedJSON(document.getElementById('json-raw').value); }
+function applyImportedJSON(rawText){
+  try {
+    const parsed=JSON.parse(rawText);
+    if(!parsed||typeof parsed!=='object'||typeof parsed.days!=='object'){ alert('Structura JSON nu este validă.'); return; }
+    state={ version:1, settings:Object.assign(defaultState().settings,parsed.settings||{}), active:parsed.active||null, days:parsed.days };
+    saveState(); alert('Backup importat cu succes.');
+  } catch(err){ alert('JSON invalid: '+err.message); }
+}
+function resetAllData(){
+  if(!confirm('Sigur ștergi toate datele?')) return;
+  state=defaultState(); saveState();
+}
+function saveSettings(){
+  state.settings.driver=document.getElementById('set-driver').value.trim();
+  state.settings.company=document.getElementById('set-company').value.trim();
+  state.settings.truck=document.getElementById('set-truck').value.trim();
+  state.settings.rate=Number(document.getElementById('set-rate').value)||0;
+  state.settings.price=Number(document.getElementById('set-price').value)||0;
+  saveState(); alert('Setări salvate.');
+}
+
+function initMap(){
+  const statusEl=document.getElementById('geo-status');
+  if(typeof L==='undefined'){
+    statusEl.textContent='Harta nu poate fi încărcată (lipsește Leaflet — rulează cu internet sau adaugă Leaflet local).';
+    return;
+  }
+  if(!map){
+    map=L.map('map').setView([45.9432,24.9668],6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      attribution:'© OpenStreetMap', maxZoom:19
+    }).addTo(map);
+  }
+  statusEl.textContent='Se obține poziția...';
+  if(!navigator.geolocation){ statusEl.textContent='Geolocația nu este disponibilă în acest browser.'; return; }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    const lat=pos.coords.latitude, lon=pos.coords.longitude;
+    map.setView([lat,lon],15);
+    if(marker) map.removeLayer(marker);
+    marker=L.marker([lat,lon]).addTo(map).bindPopup('Poziția ta').openPopup();
+    statusEl.textContent='Poziție: '+lat.toFixed(5)+', '+lon.toFixed(5);
+  },function(err){
+    statusEl.textContent='Eroare geolocație: '+err.message+' (necesită HTTPS sau localhost).';
+  },{enableHighAccuracy:true,timeout:10000});
+}
+
+function renderAll(){
+  const tKey=todayKey();
+  document.getElementById('day-summary-sub').textContent='Data curentă: '+tKey;
+  const d=state.settings.driver?'Șofer: '+state.settings.driver:'Șofer nesetat';
+  const tr=state.settings.truck?'Camion: '+state.settings.truck:'Camion nesetat';
+  document.getElementById('hdr-info').textContent=d+' • '+tr+' • '+tKey;
+  const todayEntry=state.days[tKey];
+  const rb=document.getElementById('rest-day-banner');
+  if(todayEntry&&todayEntry.status==='odihna'){
+    rb.style.display='block';
+    rb.innerHTML='🛌 Ziua de azi ('+tKey+') este Zi liberă / Odihnă. <button class="btn" onclick="setDayStatus(\''+tKey+'\',\'normal\')">Revenire</button>';
+  } else rb.style.display='none';
+  updateLiveTimer(); renderTodayTotals(); scanMissingDays();
+}
+
+document.addEventListener('DOMContentLoaded',function(){
+  renderAll(); startTick();
+});
+</script>
+</body>
+</html>

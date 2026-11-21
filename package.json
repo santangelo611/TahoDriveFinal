@@ -1,0 +1,11 @@
+{
+  "name": "tahodrive-android",
+  "version": "2.5.0",
+  "description": "TahoDrive Android APK wrapper",
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/cli": "^6.1.0",
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/geolocation": "^6.0.0"
+  }
+}

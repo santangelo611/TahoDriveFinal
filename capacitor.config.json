@@ -1,0 +1,8 @@
+{
+  "appId": "ro.tahodrive.jurnal",
+  "appName": "TahoDrive",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
